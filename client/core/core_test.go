@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -31,6 +33,7 @@ import (
 	"github.com/decred/dcrd/crypto/blake256"
 	"github.com/decred/dcrd/dcrec/secp256k1/v2"
 	"github.com/decred/slog"
+	"gopkg.in/ini.v1"
 )
 
 var (
@@ -58,7 +61,7 @@ var (
 	}
 	tDexPriv       *secp256k1.PrivateKey
 	tDexKey        *secp256k1.PublicKey
-	tPW                   = "dexpw"
+	tPW                   = []byte("dexpw")
 	wPW                   = "walletpw"
 	tDexUrl               = "somedex.tld"
 	tDcrBtcMktName        = "dcr_btc"
@@ -313,6 +316,10 @@ func (tdb *TDB) NotificationsN(int) ([]*db.Notification, error) { return nil, ni
 
 func (tdb *TDB) Store(k string, b []byte) error {
 	return tdb.storeErr
+}
+
+func (tdb *TDB) ValueExists(k string) (bool, error) {
+	return false, nil
 }
 
 func (tdb *TDB) Get(k string) ([]byte, error) {
@@ -577,8 +584,8 @@ func newTestRig() *testRig {
 			wsConstructor: func(*comms.WsCfg) (comms.WsConn, error) {
 				return conn, nil
 			},
-			newCrypter: func(string) encrypt.Crypter { return crypter },
-			reCrypter:  func(string, []byte) (encrypt.Crypter, error) { return crypter, crypter.recryptErr },
+			newCrypter: func([]byte) encrypt.Crypter { return crypter },
+			reCrypter:  func([]byte, []byte) (encrypt.Crypter, error) { return crypter, crypter.recryptErr },
 		},
 		db:      db,
 		queue:   queue,
@@ -858,14 +865,26 @@ func TestCreateWallet(t *testing.T) {
 		return asset.DecodeCoinID(tDCR.ID, coinID) // using DCR decoder
 	}
 
+	tempDir, err := ioutil.TempDir("", "coretest")
+	if err != nil {
+		t.Fatalf("error creating temporary directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	cfgFilePath := filepath.Join(tempDir, "test.conf")
+	err = ini.Empty().SaveTo(cfgFilePath)
+	if err != nil {
+		t.Fatalf("error creating temporary config file: %v", err)
+	}
+
 	// Create registration form.
 	form := &WalletForm{
 		AssetID: tILT.ID,
 		Account: "default",
+		INIPath: cfgFilePath,
 	}
 
 	ensureErr := func(tag string) {
-		err := tCore.CreateWallet(tPW, wPW, form)
+		err := tCore.CreateWallet(tPW, []byte(wPW), form)
 		if err == nil {
 			t.Fatalf("no %s error", tag)
 		}
@@ -926,7 +945,7 @@ func TestCreateWallet(t *testing.T) {
 
 	// Success
 	delete(tCore.wallets, tILT.ID)
-	err := tCore.CreateWallet(tPW, wPW, form)
+	err = tCore.CreateWallet(tPW, []byte(wPW), form)
 	if err != nil {
 		t.Fatalf("error when should be no error: %v", err)
 	}
@@ -1325,14 +1344,15 @@ func TestInitializeClient(t *testing.T) {
 	}
 
 	// Empty password.
-	err = tCore.InitializeClient("")
+	emptyPass := []byte("")
+	err = tCore.InitializeClient(emptyPass)
 	if err == nil {
 		t.Fatalf("no error for empty password")
 	}
 
-	// Store error
+	// Store error. Use a non-empty password to pass empty password check.
 	rig.db.storeErr = tErr
-	err = tCore.InitializeClient("")
+	err = tCore.InitializeClient(tPW)
 	if err == nil {
 		t.Fatalf("no error for StoreEncryptedKey error")
 	}
@@ -1396,12 +1416,12 @@ func TestTrade(t *testing.T) {
 	dcrWallet, tDcrWallet := newTWallet(tDCR.ID)
 	tCore.wallets[tDCR.ID] = dcrWallet
 	dcrWallet.address = "DsVmA7aqqWeKWy461hXjytbZbgCqbB8g2dq"
-	dcrWallet.Unlock(tPW, time.Hour)
+	dcrWallet.Unlock(wPW, time.Hour)
 
 	btcWallet, tBtcWallet := newTWallet(tBTC.ID)
 	tCore.wallets[tBTC.ID] = btcWallet
 	btcWallet.address = "12DXGkvxFjuq5btXYkwWfBZaz1rVwFgini"
-	btcWallet.Unlock(tPW, time.Hour)
+	btcWallet.Unlock(wPW, time.Hour)
 
 	qty := tDCR.LotSize * 10
 	rate := tBTC.RateStep * 1000
@@ -1810,12 +1830,12 @@ func TestTradeTracking(t *testing.T) {
 	dcrWallet, tDcrWallet := newTWallet(tDCR.ID)
 	tCore.wallets[tDCR.ID] = dcrWallet
 	dcrWallet.address = "DsVmA7aqqWeKWy461hXjytbZbgCqbB8g2dq"
-	dcrWallet.Unlock(tPW, time.Hour)
+	dcrWallet.Unlock(wPW, time.Hour)
 
 	btcWallet, tBtcWallet := newTWallet(tBTC.ID)
 	tCore.wallets[tBTC.ID] = btcWallet
 	btcWallet.address = "12DXGkvxFjuq5btXYkwWfBZaz1rVwFgini"
-	btcWallet.Unlock(tPW, time.Hour)
+	btcWallet.Unlock(wPW, time.Hour)
 
 	matchSize := 4 * tDCR.LotSize
 	cancelledQty := tDCR.LotSize
