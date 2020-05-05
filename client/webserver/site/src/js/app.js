@@ -16,6 +16,7 @@ const unbind = Doc.unbind
 
 const updateWalletRoute = 'update_wallet'
 const notificationRoute = 'notify'
+const authCK = 'dexauth'
 
 /* constructors is a map to page constructors. */
 const constructors = {
@@ -146,7 +147,7 @@ export default class Application {
     const pg = this.page = Doc.parsePage(this.header, [
       'noteIndicator', 'noteBox', 'noteList', 'noteTemplate',
       'walletsMenuEntry', 'noteMenuEntry', 'settingsIcon', 'loginLink', 'loader',
-      'profileIcon'
+      'profileMenuEntry', 'profileIndicator', 'profileBox', 'profileSignout'
     ])
     pg.noteIndicator.style.display = 'none'
     delete pg.noteTemplate.id
@@ -155,14 +156,14 @@ export default class Application {
     pg.loader.style.backgroundColor = 'rgba(0, 0, 0, 0.5)'
     Doc.show(pg.loader)
     var hide
-    hide = e => {
-      if (!Doc.mouseInElement(e, pg.noteBox)) {
-        pg.noteBox.style.display = 'none'
-        unbind(document, hide)
+    hide = (el, e) => {
+      if (!Doc.mouseInElement(e, el)) {
+        el.style.display = 'none'
+        unbind(document, hide.bind(this, el))
       }
     }
     bind(pg.noteMenuEntry, 'click', async e => {
-      bind(document, 'click', hide)
+      bind(document, 'click', hide.bind(this, pg.noteBox))
       pg.noteBox.style.display = 'block'
       pg.noteIndicator.style.display = 'none'
       const acks = []
@@ -179,6 +180,14 @@ export default class Application {
     if (this.notes.length === 0) {
       pg.noteList.textContent = 'no notifications'
     }
+    bind(pg.profileMenuEntry, 'click', async e => {
+      bind(document, 'click', hide.bind(this, pg.profileBox))
+      pg.profileBox.style.display = 'block'
+    })
+    bind(pg.profileSignout, 'click', async e => {
+      State.removeCookie(authCK)
+      window.location.reload()
+    })
   }
 
   /*
@@ -205,11 +214,11 @@ export default class Application {
   setLogged (logged) {
     const pg = this.page
     if (logged) {
-      Doc.show(pg.noteMenuEntry, pg.settingsIcon, pg.walletsMenuEntry, pg.profileIcon)
+      Doc.show(pg.noteMenuEntry, pg.settingsIcon, pg.walletsMenuEntry, pg.profileMenuEntry)
       Doc.hide(pg.loginLink)
       return
     }
-    Doc.hide(pg.noteMenuEntry, pg.settingsIcon, pg.profileIcon)
+    Doc.hide(pg.noteMenuEntry, pg.settingsIcon, pg.profileMenuEntry)
     Doc.show(pg.loginLink)
   }
 
