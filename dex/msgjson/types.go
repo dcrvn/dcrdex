@@ -105,6 +105,9 @@ const (
 	// UnsubOrderBookRoute is client-originating request-type message cancelling
 	// an order book subscription.
 	UnsubOrderBookRoute = "unsub_orderbook"
+	// ResubOrderBookRoute is client-originating request-type message cancelling
+	// an order book subscription.
+	ResubOrderBookRoute = "resub_orderbook"
 	// BookOrderRoute is the DEX-originating notification-type message informing
 	// the client to add the order to the order book.
 	BookOrderRoute = "book_order"
@@ -647,6 +650,12 @@ type OrderBookSubscription struct {
 // UnsubOrderBookRoute, terminating an order book subscription.
 type UnsubOrderBook struct {
 	MarketID string `json:"marketid"`
+}
+
+// ResubOrderBook is the payload for a client-originating request to the
+// ResubOrderBookRoute, renewed order book subscription.
+type ResubOrderBook struct {
+	MarketIDs []string `json:"marketids"`
 }
 
 // orderbook subscription notification payloads include: BookOrderNote,

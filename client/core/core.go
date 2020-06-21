@@ -2392,6 +2392,32 @@ func (c *Core) handleReconnect(host string) {
 		log.Errorf("unable to authorize DEX at %s: %v", host, err)
 		return
 	}
+
+	var marketIDs []string
+	dc.marketMtx.RLock()
+	for mkt := range dc.marketMap {
+		marketIDs = append(marketIDs, mkt)
+	}
+	dc.marketMtx.RUnlock()
+	req, err := msgjson.NewRequest(dc.NextID(), msgjson.ResubOrderBookRoute, &msgjson.ResubOrderBook{
+		MarketIDs: marketIDs,
+	})
+	if err != nil {
+		log.Errorf("unable resubscribe DEX at %s: %v", host, err)
+		return
+	}
+
+	err = dc.Request(req, func(msg *msgjson.Message) {
+		var res bool
+		msg.UnmarshalResult(&res)
+		if !res {
+			log.Error("error resubscribe")
+		}
+	})
+	if err != nil {
+		log.Error("request error re-subscribing %v", err)
+		return
+	}
 }
 
 // handleConnectEvent is called when a WsConn indicates that a connection was

@@ -239,6 +239,7 @@ func NewBookRouter(sources map[string]BookSource) *BookRouter {
 	}
 	comms.Route(msgjson.OrderBookRoute, router.handleOrderBook)
 	comms.Route(msgjson.UnsubOrderBookRoute, router.handleUnsubOrderBook)
+	comms.Route(msgjson.ResubOrderBookRoute, router.handleResubOrderBook)
 	return router
 }
 
@@ -465,6 +466,50 @@ func (r *BookRouter) handleOrderBook(conn comms.Link, msg *msgjson.Message) *msg
 	}
 	book.subs.add(conn)
 	r.sendBook(conn, book, msg.ID)
+	return nil
+}
+
+// handleResubOrderBook is the handler for the non-authenticated
+// 'resub_orderbook' route. Clients use this route to resubscribe from an
+// order book.
+func (r *BookRouter) handleResubOrderBook(conn comms.Link, msg *msgjson.Message) *msgjson.Error {
+	resubs := new(msgjson.ResubOrderBook)
+	err := json.Unmarshal(msg.Payload, &resubs)
+	if err != nil {
+		return &msgjson.Error{
+			Code:    msgjson.RPCParseError,
+			Message: "parse error: " + err.Error(),
+		}
+	}
+
+	for i := 0; i < len(resubs.MarketIDs); i++ {
+		mkt := resubs.MarketIDs[i]
+		if err != nil {
+			return &msgjson.Error{
+				Code:    msgjson.UnknownMarket,
+				Message: "market name error: " + err.Error(),
+			}
+		}
+		book, found := r.books[mkt]
+		if !found {
+			return &msgjson.Error{
+				Code:    msgjson.UnknownMarket,
+				Message: "unknown market: " + mkt,
+			}
+		}
+		book.subs.add(conn)
+	}
+
+	ack, err := msgjson.NewResponse(msg.ID, true, nil)
+	if err != nil {
+		log.Errorf("failed to encode response payload = true?")
+	}
+
+	err = conn.Send(ack)
+	if err != nil {
+		log.Debugf("error sending unsub_orderbook response: %v", err)
+	}
+
 	return nil
 }
 
